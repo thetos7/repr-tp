@@ -45,17 +45,17 @@ function genSpheres({
   centerY
 }: SphereGenProperties): SphereObject[] {
   const spheres = [];
-  
+
   const spacingX = width / colCount;
   const spacingY = -height / rowCount;
-  
+
   const originX = centerX - width / 2;
   const originY = centerY + height / 2;
 
   for (let y = 0; y < rowCount; ++y) {
     for (let x = 0; x < colCount; ++x) {
-      const xRatio = x / colCount;
-      const yRatio = y / rowCount;
+      const xRatio = x / (colCount - 1);
+      const yRatio = y / (rowCount - 1);
 
       const transform = new Transform();
       const sphereX = originX + x * spacingX;
@@ -70,6 +70,29 @@ function genSpheres({
   return spheres;
 }
 
+function mix(a: number, b: number, r: number) {
+  return (1 - r) * a + r * b;
+}
+
+const floatVec3Array = (len: number) => new Float32Array(len * 3);
+const floatArray = (len: number) => new Float32Array(len);
+
+function setFloatArray(arr: Float32Array, values: number[]) {
+  for (let i = 0; i < values.length; ++i) {
+    arr[i] = values[i];
+  }
+}
+
+function setFloatVec3Array(
+  arr: Float32Array,
+  values: [number, number, number][]
+) {
+  for (let i = 0; i < values.length; ++i) {
+    for (let j = 0; j < 3; ++j) {
+      arr[i * 3 + j] = values[i][j];
+    }
+  }
+}
 /**
  * Class representing the current application with its state.
  *
@@ -110,7 +133,10 @@ class Application {
       'uMaterial.metallic': 0,
       'uMaterial.roughness': 0,
       'uModel.localToProjection': mat4.create(),
-      'uModel.transform': mat4.create()
+      'uModel.transform': mat4.create(),
+      'uPointLightsInfo.positions[0]': floatVec3Array(4),
+      'uPointLightsInfo.powers[0]': floatArray(4),
+      uCampPos: vec3.create()
     };
 
     this._shader = new PBRShader();
@@ -142,6 +168,17 @@ class Application {
       // ```uniforms.myTexture = this._textureExample;```
     }
     // this._context.setClearColor(0.5,0.5,0.5)
+    setFloatVec3Array(this._uniforms['uPointLightsInfo.positions[0]'], [
+      [-0.5, -0.5, 1],
+      [-0.5, 0.5, 1],
+      [0.5, -0.5, 1],
+      [0.5, 0.5, 1]
+    ]);
+    setFloatArray(
+      this._uniforms['uPointLightsInfo.powers[0]'],
+      [10, 2, 10, 5]
+    );
+    vec3.set(this._uniforms['uCampPos'], 0, 0, 2);
   }
 
   /**
@@ -199,6 +236,7 @@ class Application {
       );
 
       this._uniforms['uMaterial.metallic'] = sphere.xRatio;
+      // this._uniforms['uMaterial.roughness'] = mix(0.01,1.0,sphere.yRatio); // ensure minimum roughness
       this._uniforms['uMaterial.roughness'] = sphere.yRatio;
 
       // Draws the objects.
@@ -227,6 +265,14 @@ class Application {
 const canvas = document.getElementById('main-canvas') as HTMLCanvasElement;
 const app = new Application(canvas as HTMLCanvasElement);
 app.init();
+
+declare global {
+  interface Window {
+    app: Application | undefined;
+  }
+}
+
+window.app = app;
 
 function animate() {
   app.update();

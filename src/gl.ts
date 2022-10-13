@@ -391,13 +391,14 @@ export class GLContext {
         const unit = this._textureUnitSlot++;
         gl.activeTexture(gl.TEXTURE0 + unit);
         this._bindTexture(uniformValue as Texture);
-        uploadUniform(gl, info.location, info.type, unit);
+        uploadUniform(gl, info.location, info.type, unit, info.size);
       } else {
         uploadUniform(
           gl,
           info.location,
           info.type,
-          uniformValue as UniformType
+          uniformValue as UniformType,
+          info.size
         );
       }
     }
@@ -609,7 +610,7 @@ export function getActiveUniformsInfo(
     if (info !== null) {
       const location = gl.getUniformLocation(program, info.name);
       if (location !== null) {
-        output.set(info.name, { location, type: info.type });
+        output.set(info.name, { location, type: info.type, size: info.size });
       }
     }
   }
@@ -620,7 +621,8 @@ export function uploadUniform(
   gl: WebGL2RenderingContext,
   loc: WebGLUniformLocation,
   type: number,
-  value: UniformType
+  value: UniformType,
+  size: number
 ) {
   // **Note**: possible optimization would be to
   // save function pointer per type.
@@ -629,7 +631,11 @@ export function uploadUniform(
     case gl.BOOL:
       gl.uniform1ui(loc, value as number);
     case gl.FLOAT:
-      gl.uniform1f(loc, value as number);
+      if (size !== 1) {
+        gl.uniform1fv(loc, value as Float32Array);
+      } else {
+        gl.uniform1f(loc, value as number);
+      }
       break;
     case gl.FLOAT_VEC2:
       gl.uniform2fv(loc, value as Float32Array);
@@ -678,6 +684,7 @@ export function uploadUniform(
 export interface UniformInfo {
   location: WebGLUniformLocation;
   type: number;
+  size: number;
 }
 
 interface GeometryCache {

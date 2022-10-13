@@ -27,7 +27,7 @@ struct Model
 
 uniform Model uModel;
 
-out vec3 vViewDirection;
+out vec3 vWorldPos;
 
 void
 main()
@@ -37,6 +37,7 @@ main()
 #ifdef USE_UV
   vUv = in_uv;
 #endif
-  // vViewDirection = uModel.localToProjection * vec4(0.0,0.0,1.0,1.0);
+  vec4 vert_pos_global = uModel.transform * positionLocal;
+  vWorldPos = (vert_pos_global.xyz / vert_pos_global.w);
   gl_Position = uModel.localToProjection * uModel.transform * positionLocal;
 }
