@@ -11,6 +11,8 @@ import { UniformType } from './types';
 
 interface GUIProperties {
   albedo: number[];
+  roughness:number;
+  metallic: number;
 }
 
 interface SphereObject {
@@ -170,7 +172,9 @@ class Application {
     this._SpecularEnvironmentTexture = null;
 
     this._guiProperties = {
-      albedo: [255, 255, 255]
+      albedo: [255, 255, 255],
+      roughness: 0,
+      metallic: 0,
     };
 
     this._spheres = genSpheres(sphereGenDefaults);
@@ -281,7 +285,9 @@ class Application {
       );
 
       this._uniforms['uMaterial.metallic'] = sphere.xRatio;
+      // this._uniforms['uMaterial.metallic'] = props.metallic;
       this._uniforms['uMaterial.roughness'] = mix(0.01, 1.0, sphere.yRatio); // ensure minimum roughness
+      // this._uniforms['uMaterial.roughness'] = props.roughness;
       // this._uniforms['uMaterial.roughness'] = sphere.yRatio;
 
       // Draws the objects.
@@ -303,6 +309,8 @@ class Application {
   private _createGUI(): GUI {
     const gui = new GUI();
     gui.addColor(this._guiProperties, 'albedo');
+    gui.add(this._guiProperties, 'roughness', 0.0, 1.0,0.01);
+    gui.add(this._guiProperties, 'metallic', 0.0, 1.0,0.01);
     return gui;
   }
 }

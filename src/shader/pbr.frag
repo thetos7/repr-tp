@@ -19,15 +19,15 @@ vec2 cartesianToPolar(vec3 n) {
 }
 
 float roughPrevLevel(float roughness) {
-  return floor(roughness * SPECULAR_ROUGH_LEVEL_COUNT)/SPECULAR_ROUGH_LEVEL_COUNT;
+  return floor(roughness * SPECULAR_ROUGH_LEVEL_COUNT);
 }
 
 float roughNextLevel(float roughness) {
-  return ceil(roughness * SPECULAR_ROUGH_LEVEL_COUNT)/SPECULAR_ROUGH_LEVEL_COUNT;
+  return ceil(roughness * SPECULAR_ROUGH_LEVEL_COUNT);
 }
 
 vec3 rgbmDecode(vec4 rgbm) {
-  return 6.0*rgbm.rgb*rgbm.a;
+  return 6.0 * rgbm.rgb * rgbm.a;
 }
 
 out vec4 outFragColor;
@@ -80,20 +80,27 @@ vec3 sampleDiffuseEnv(sampler2D tex, vec3 dir) {
 }
 
 vec3 textureLod(sampler2D tex, vec2 uv, float level) {
-  vec2 map_uv = uv / pow(2.0, level);
+  vec2 map_uv = uv;
   map_uv.y /= 2.0;
-  map_uv.y += 1.0 / pow(2.0, level + 1.0);
+  map_uv.x /= pow(2.0, level);
+  map_uv.y /= pow(2.0, level);
+  map_uv.y += 1.0 - (1.0 / pow(2.0, level)); // formula seems to check out, but results are strange
   return rgbmDecode(texture(tex, map_uv));
 }
 
 vec3 sampleSpecularEnv(sampler2D tex, vec3 dir, float roughness) {
   vec2 coordinates = cartesianToPolar(dir);
-  float prevLevel = roughPrevLevel(roughness);
-  float nextLevel = roughNextLevel(roughness);
+
+  float prevLevel = max(floor(roughness * SPECULAR_ROUGH_LEVEL_COUNT), 0.0);
+  float nextLevel = min(ceil(roughness * SPECULAR_ROUGH_LEVEL_COUNT), SPECULAR_ROUGH_LEVEL_COUNT-1.0);
+  float prevLevelNorm = prevLevel/SPECULAR_ROUGH_LEVEL_COUNT;
+  float nextLevelNorm = nextLevel/SPECULAR_ROUGH_LEVEL_COUNT;
   vec3 prevLevelSample = textureLod(tex, coordinates, prevLevel);
-  vec3 nextLevelSample = textureLod(tex, coordinates, prevLevel);
-  float fact = (roughness - prevLevel) / (nextLevel - prevLevel);
-  return fact * nextLevelSample + (1.0-fact) * nextLevelSample;
+  vec3 nextLevelSample = textureLod(tex, coordinates, nextLevel);
+  
+  float fact = (roughness - prevLevelNorm) / (nextLevel - prevLevelNorm);
+  
+  return fact * nextLevelSample + (1.0 - fact) * nextLevelSample;
 }
 
 vec3 diffuseBRDF(vec3 albedo, vec3 _viewDirection, vec3 lightDirection) {
@@ -145,11 +152,44 @@ float sampleLight(vec3 lightDir, vec3 pos, float lightPow) {
 }
 
 vec3 indirectDiffuse(vec3 albedo) {
-  return albedo /* / M_PI */ * sampleDiffuseEnv(uDiffuseTex, normal);
+  return albedo / M_PI * sampleDiffuseEnv(uDiffuseTex, normal);
 }
 
-vec3 indirectSpecular() {
-  return vec3(0);
+vec3 indirectSpecular(vec3 albedo, vec3 viewDirection) {
+  vec3 reflection = reflect(-viewDirection, normal);
+  vec3 f0 = mix(vec3(0.04), albedo, uMaterial.metallic);
+  vec3 ks = fresnelSchlick(viewDirection, normal, f0);
+  // float f0 = 0.04;
+  vec3 specularSample = sampleSpecularEnv(uSpecularTex, reflection, uMaterial.roughness);
+  float vDotN = dot(normal, viewDirection);
+  vec2 brdf_uv;
+  brdf_uv.x = vDotN;
+  brdf_uv.y = uMaterial.roughness;
+  vec2 brdf = texture(uBrdfTex, brdf_uv).rg;
+  vec3 F =  f0 * brdf.r + brdf.g;
+  return specularSample * F;
+}
+
+vec3 indirectLighting(vec3 albedo, vec3 viewDirection) {
+  vec3 reflection = reflect(-viewDirection, normal);
+  vec3 f0 = mix(vec3(0.04), albedo, uMaterial.metallic);
+  vec3 ks = fresnelSchlick(viewDirection, normal, f0);
+  vec3 kd = (1.0 - ks) * (1.0 - uMaterial.metallic) * albedo;
+
+  // diffuse
+  vec3 diffuse = kd * sampleDiffuseEnv(uDiffuseTex, normal);
+
+  vec3 specularSample = sampleSpecularEnv(uSpecularTex, reflection, uMaterial.roughness);
+
+  float vDotN = dot(normal, viewDirection);
+  vec2 brdf_uv;
+  brdf_uv.x = vDotN;
+  brdf_uv.y = uMaterial.roughness;
+  vec2 brdf = texture(uBrdfTex, brdf_uv).rg;
+
+  vec3 specular = specularSample * (ks * brdf.r + brdf.g);
+
+  return diffuse + specular;
 }
 
 void
@@ -176,10 +216,12 @@ main()
     directIrradiance += (diffuse + specular) * cosTheta * illumination;
   }
 
-  vec3 indirectIrradiance = kd * indirectDiffuse(albedo) + (1.0-kd) * indirectSpecular();
+  vec3 indirectIrradiance = indirectLighting(albedo, viewDirection);
+  // vec3 indirectIrradiance = sampleSpecularEnv(uSpecularTex, normal, uMaterial.roughness);
 
-  vec3 color = indirectIrradiance;
+  // vec3 color = indirectIrradiance;
   // vec3 color = directIrradiance;
+  vec3 color = directIrradiance+indirectIrradiance;
   // **DO NOT** forget to apply gamma correction as last step.
   outFragColor.rgba = LinearTosRGB(vec4(color, 1.0));
 }
