@@ -1,10 +1,34 @@
 precision highp float;
 
-#define POINT_LIGHT_COUNT 4
+// #define POINT_LIGHT_COUNT 4
 
 #define M_PI 3.1415926535897932384626433832795
 
 #define EPSILON 0.000000000000000001
+
+#define SPECULAR_ROUGH_LEVEL_COUNT 6.0
+
+const float RECIPROCAL_PI = 0.31830988618;
+const float RECIPROCAL_PI2 = 0.15915494;
+
+vec2 cartesianToPolar(vec3 n) {
+    vec2 uv;
+    uv.x = atan(n.z, n.x) * RECIPROCAL_PI2 + 0.5;
+    uv.y = asin(n.y) * RECIPROCAL_PI + 0.5;
+    return uv;
+}
+
+float roughPrevLevel(float roughness) {
+  return floor(roughness * SPECULAR_ROUGH_LEVEL_COUNT)/SPECULAR_ROUGH_LEVEL_COUNT;
+}
+
+float roughNextLevel(float roughness) {
+  return ceil(roughness * SPECULAR_ROUGH_LEVEL_COUNT)/SPECULAR_ROUGH_LEVEL_COUNT;
+}
+
+vec3 rgbmDecode(vec4 rgbm) {
+  return 6.0*rgbm.rgb*rgbm.a;
+}
 
 out vec4 outFragColor;
 struct Material
@@ -16,10 +40,20 @@ struct Material
 
 uniform Material uMaterial;
 uniform vec3 uCamPos;
-uniform struct PointLightsInfo{
+
+#ifdef LIGHT_PROBE
+  uniform sampler2D uBrdfTex;
+  uniform sampler2D uDiffuseTex;
+  uniform sampler2D uSpecularTex;
+#endif
+
+struct PointLightsInfo{
   vec3 positions[POINT_LIGHT_COUNT];
   float powers[POINT_LIGHT_COUNT];
-} uPointLightsInfo;
+};
+
+uniform PointLightsInfo uPointLightsInfo;
+
 // From three.js
 vec4 sRGBToLinear( in vec4 value ) {
 	return vec4( mix( pow( value.rgb * 0.9478672986 + vec3( 0.0521327014 ), vec3( 2.4 ) ), value.rgb * 0.0773993808, vec3( lessThanEqual( value.rgb, vec3( 0.04045 ) ) ) ), value.a );
@@ -39,6 +73,27 @@ vec3 normal;
 
 float safeDot(vec3 a, vec3 b) {
   return max(dot(a,b), EPSILON);
+}
+
+vec3 sampleDiffuseEnv(sampler2D tex, vec3 dir) {
+  return rgbmDecode(texture(tex, cartesianToPolar(dir)));
+}
+
+vec3 textureLod(sampler2D tex, vec2 uv, float level) {
+  vec2 map_uv = uv / pow(2.0, level);
+  map_uv.y /= 2.0;
+  map_uv.y += 1.0 / pow(2.0, level + 1.0);
+  return rgbmDecode(texture(tex, map_uv));
+}
+
+vec3 sampleSpecularEnv(sampler2D tex, vec3 dir, float roughness) {
+  vec2 coordinates = cartesianToPolar(dir);
+  float prevLevel = roughPrevLevel(roughness);
+  float nextLevel = roughNextLevel(roughness);
+  vec3 prevLevelSample = textureLod(tex, coordinates, prevLevel);
+  vec3 nextLevelSample = textureLod(tex, coordinates, prevLevel);
+  float fact = (roughness - prevLevel) / (nextLevel - prevLevel);
+  return fact * nextLevelSample + (1.0-fact) * nextLevelSample;
 }
 
 vec3 diffuseBRDF(vec3 albedo, vec3 _viewDirection, vec3 lightDirection) {
@@ -89,14 +144,22 @@ float sampleLight(vec3 lightDir, vec3 pos, float lightPow) {
   return lightPow/(4.0*M_PI*r2);
 }
 
+vec3 indirectDiffuse(vec3 albedo) {
+  return albedo /* / M_PI */ * sampleDiffuseEnv(uDiffuseTex, normal);
+}
+
+vec3 indirectSpecular() {
+  return vec3(0);
+}
+
 void
 main()
 {
   // **DO NOT** forget to do all your computation in linear space.
   vec3 albedo = sRGBToLinear(vec4(uMaterial.albedo, 1.0)).rgb;
-  vec3 viewDirection = uCamPos - vWorldPos;
+  vec3 viewDirection = normalize(uCamPos - vWorldPos);
   normal = normalize(vNormalWS);
-  vec3 color = vec3(0);
+  vec3 directIrradiance = vec3(0);
   // float ks = 1.0; // TODO
   float kd = 1.0 - uMaterial.metallic; // TODO
   // float kd = 1.0 - ks;
@@ -110,9 +173,13 @@ main()
     
     float cosTheta = safeDot(normal, lightDirection);
     float illumination = sampleLight(lightDirection,lightPos, lightPower);
-    color += (diffuse + specular) * cosTheta * illumination;
+    directIrradiance += (diffuse + specular) * cosTheta * illumination;
   }
 
+  vec3 indirectIrradiance = kd * indirectDiffuse(albedo) + (1.0-kd) * indirectSpecular();
+
+  vec3 color = indirectIrradiance;
+  // vec3 color = directIrradiance;
   // **DO NOT** forget to apply gamma correction as last step.
   outFragColor.rgba = LinearTosRGB(vec4(color, 1.0));
 }

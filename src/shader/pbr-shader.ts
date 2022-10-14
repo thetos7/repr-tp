@@ -19,4 +19,8 @@ export class PBRShader extends Shader {
   public set pointLightCount(count: number) {
     this.defines.POINT_LIGHT_COUNT = count;
   }
+
+  public set useUVs(flag: boolean) {
+    this.defines.USE_UV = flag;
+  }
 }

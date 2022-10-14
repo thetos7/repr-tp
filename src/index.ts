@@ -5,8 +5,9 @@ import { Geometry } from './geometries/geometry';
 import { SphereGeometry } from './geometries/sphere';
 import { GLContext } from './gl';
 import { PBRShader } from './shader/pbr-shader';
-import { Texture2D } from './textures/texture';
+import { Texture, Texture2D } from './textures/texture';
 import { Transform } from './transform';
+import { UniformType } from './types';
 
 interface GUIProperties {
   albedo: number[];
@@ -35,6 +36,10 @@ const sphereGenDefaults: SphereGenProperties = {
   centerX: 0,
   centerY: 0
 };
+
+const DiffuseTexturePath = 'assets/env/Alexs_Apt_2k-diffuse-RGBM.png';
+const SpecularTexturePath = 'assets/env/Alexs_Apt_2k-specular-RGBM.png';
+const POINT_LIGHT_COUNT = 4;
 
 function genSpheres({
   rowCount,
@@ -93,6 +98,21 @@ function setFloatVec3Array(
     }
   }
 }
+
+interface Uniforms {
+  'uMaterial.albedo': vec3;
+  'uMaterial.metallic': number;
+  'uMaterial.roughness': number;
+  'uModel.localToProjection': mat4;
+  'uModel.transform': mat4;
+  'uPointLightsInfo.positions[0]': Float32Array;
+  'uPointLightsInfo.powers[0]': Float32Array;
+  uCampPos: vec3;
+  uBrdfTex: Texture | number;
+  uDiffuseTex: Texture | number;
+  uSpecularTex: Texture | number;
+  [k: string]: UniformType | Texture;
+}
 /**
  * Class representing the current application with its state.
  *
@@ -108,9 +128,11 @@ class Application {
 
   private _shader: PBRShader;
   private _geometry: Geometry;
-  private _uniforms; // infer type to get completions
+  private _uniforms: Uniforms;
 
-  private _textureExample: Texture2D<HTMLElement> | null;
+  private _BRDFTexture: Texture2D<HTMLElement> | null;
+  private _DiffuseEnvironmentTexture: Texture2D<HTMLElement> | null;
+  private _SpecularEnvironmentTexture: Texture2D<HTMLElement> | null;
 
   private _camera: Camera;
 
@@ -136,11 +158,16 @@ class Application {
       'uModel.transform': mat4.create(),
       'uPointLightsInfo.positions[0]': floatVec3Array(4),
       'uPointLightsInfo.powers[0]': floatArray(4),
-      uCampPos: vec3.create()
+      uCampPos: vec3.create(),
+      uBrdfTex: 0,
+      uDiffuseTex: 0,
+      uSpecularTex: 0
     };
 
     this._shader = new PBRShader();
-    this._textureExample = null;
+    this._BRDFTexture = null;
+    this._DiffuseEnvironmentTexture = null;
+    this._SpecularEnvironmentTexture = null;
 
     this._guiProperties = {
       albedo: [255, 255, 255]
@@ -155,28 +182,46 @@ class Application {
    * Initializes the application.
    */
   async init() {
+    this._shader.pointLightCount = POINT_LIGHT_COUNT;
+    this._shader.useUVs = true;
+    this._shader.useLightProbe = true;
+
     this._context.uploadGeometry(this._geometry);
     this._context.compileProgram(this._shader);
 
     // Example showing how to load a texture and upload it to GPU.
-    this._textureExample = await Texture2D.load(
-      'assets/ggx-brdf-integrated.png'
-    );
-    if (this._textureExample !== null) {
-      this._context.uploadTexture(this._textureExample);
+    this._BRDFTexture = await Texture2D.load('assets/ggx-brdf-integrated.png');
+    if (this._BRDFTexture !== null) {
+      this._context.uploadTexture(this._BRDFTexture);
       // You can then use it directly as a uniform:
       // ```uniforms.myTexture = this._textureExample;```
+      this._uniforms['uBrdfTex'] = this._BRDFTexture;
     }
+
+    this._DiffuseEnvironmentTexture = await Texture2D.load(DiffuseTexturePath);
+    if (this._DiffuseEnvironmentTexture != null) {
+      this._context.uploadTexture(this._DiffuseEnvironmentTexture);
+      this._uniforms['uDiffuseTex'] = this._DiffuseEnvironmentTexture;
+    }
+
+    this._SpecularEnvironmentTexture = await Texture2D.load(
+      SpecularTexturePath
+    );
+    if (this._SpecularEnvironmentTexture != null) {
+      this._context.uploadTexture(this._SpecularEnvironmentTexture);
+      this._uniforms['uSpecularTex'] = this._SpecularEnvironmentTexture;
+    }
+
     // this._context.setClearColor(0.5,0.5,0.5)
     setFloatVec3Array(this._uniforms['uPointLightsInfo.positions[0]'], [
-      [-0.5, -0.5, 1],
-      [-0.5, 0.5, 1],
-      [0.5, -0.5, 1],
-      [0.5, 0.5, 1]
+      [-0.8, -0.8, 1],
+      [-0.8, 0.8, 1],
+      [0.8, -0.8, 1],
+      [0.8, 0.8, 1]
     ]);
     setFloatArray(
       this._uniforms['uPointLightsInfo.powers[0]'],
-      [10, 2, 10, 5]
+      [20, 4, 20, 10]
     );
     vec3.set(this._uniforms['uCampPos'], 0, 0, 2);
   }
@@ -236,8 +281,8 @@ class Application {
       );
 
       this._uniforms['uMaterial.metallic'] = sphere.xRatio;
-      // this._uniforms['uMaterial.roughness'] = mix(0.01,1.0,sphere.yRatio); // ensure minimum roughness
-      this._uniforms['uMaterial.roughness'] = sphere.yRatio;
+      this._uniforms['uMaterial.roughness'] = mix(0.01, 1.0, sphere.yRatio); // ensure minimum roughness
+      // this._uniforms['uMaterial.roughness'] = sphere.yRatio;
 
       // Draws the objects.
       this._context.draw(this._geometry, this._shader, this._uniforms);
