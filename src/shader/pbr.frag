@@ -155,10 +155,8 @@ vec3 indirectDiffuse(vec3 albedo) {
   return albedo / M_PI * sampleDiffuseEnv(uDiffuseTex, normal);
 }
 
-vec3 indirectSpecular(vec3 albedo, vec3 viewDirection) {
+vec3 indirectSpecular(vec3 albedo, vec3 viewDirection, vec3 f0, vec3 ks) {
   vec3 reflection = reflect(-viewDirection, normal);
-  vec3 f0 = mix(vec3(0.04), albedo, uMaterial.metallic);
-  vec3 ks = fresnelSchlick(viewDirection, normal, f0);
   // float f0 = 0.04;
   vec3 specularSample = sampleSpecularEnv(uSpecularTex, reflection, uMaterial.roughness);
   float vDotN = dot(normal, viewDirection);
@@ -166,12 +164,11 @@ vec3 indirectSpecular(vec3 albedo, vec3 viewDirection) {
   brdf_uv.x = vDotN;
   brdf_uv.y = uMaterial.roughness;
   vec2 brdf = texture(uBrdfTex, brdf_uv).rg;
-  vec3 F =  f0 * brdf.r + brdf.g;
+  vec3 F =  ks * brdf.r + brdf.g;
   return specularSample * F;
 }
 
 vec3 indirectLighting(vec3 albedo, vec3 viewDirection) {
-  vec3 reflection = reflect(-viewDirection, normal);
   vec3 f0 = mix(vec3(0.04), albedo, uMaterial.metallic);
   vec3 ks = fresnelSchlick(viewDirection, normal, f0);
   vec3 kd = (1.0 - ks) * (1.0 - uMaterial.metallic) * albedo;
@@ -179,15 +176,7 @@ vec3 indirectLighting(vec3 albedo, vec3 viewDirection) {
   // diffuse
   vec3 diffuse = kd * sampleDiffuseEnv(uDiffuseTex, normal);
 
-  vec3 specularSample = sampleSpecularEnv(uSpecularTex, reflection, uMaterial.roughness);
-
-  float vDotN = dot(normal, viewDirection);
-  vec2 brdf_uv;
-  brdf_uv.x = vDotN;
-  brdf_uv.y = uMaterial.roughness;
-  vec2 brdf = texture(uBrdfTex, brdf_uv).rg;
-
-  vec3 specular = specularSample * (ks * brdf.r + brdf.g);
+  vec3 specular = indirectSpecular(albedo, viewDirection, f0, ks);
 
   return diffuse + specular;
 }

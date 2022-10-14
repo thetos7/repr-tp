@@ -53,9 +53,6 @@ function genSpheres({
 }: SphereGenProperties): SphereObject[] {
   const spheres = [];
 
-  const spacingX = width / colCount;
-  const spacingY = -height / rowCount;
-
   const originX = centerX - width / 2;
   const originY = centerY + height / 2;
 
@@ -65,8 +62,8 @@ function genSpheres({
       const yRatio = y / (rowCount - 1);
 
       const transform = new Transform();
-      const sphereX = originX + x * spacingX;
-      const sphereY = originY + y * spacingY;
+      const sphereX = originX + xRatio * width;
+      const sphereY = originY - yRatio * height;
       transform.position[0] = sphereX;
       transform.position[1] = sphereY;
       transform.combine();
@@ -309,8 +306,8 @@ class Application {
   private _createGUI(): GUI {
     const gui = new GUI();
     gui.addColor(this._guiProperties, 'albedo');
-    gui.add(this._guiProperties, 'roughness', 0.0, 1.0,0.01);
-    gui.add(this._guiProperties, 'metallic', 0.0, 1.0,0.01);
+    // gui.add(this._guiProperties, 'roughness', 0.0, 1.0,0.01);
+    // gui.add(this._guiProperties, 'metallic', 0.0, 1.0,0.01);
     return gui;
   }
 }
