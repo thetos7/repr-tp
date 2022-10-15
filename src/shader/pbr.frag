@@ -89,7 +89,7 @@ vec3 sampleSpecularEnv(sampler2D tex, vec3 dir, float roughness) {
   vec3 prevLevelSample = textureLod(tex, coordinates, prevLevel);
   vec3 nextLevelSample = textureLod(tex, coordinates, nextLevel);
   
-  float fact = (roughness - prevLevelNorm) / (nextLevel - prevLevelNorm);
+  float fact = (roughness - prevLevelNorm) / (nextLevelNorm - prevLevelNorm);
   
   return fact * nextLevelSample + (1.0 - fact) * nextLevelSample;
 }
