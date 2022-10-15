@@ -18,14 +18,6 @@ vec2 cartesianToPolar(vec3 n) {
     return uv;
 }
 
-float roughPrevLevel(float roughness) {
-  return floor(roughness * SPECULAR_ROUGH_LEVEL_COUNT);
-}
-
-float roughNextLevel(float roughness) {
-  return ceil(roughness * SPECULAR_ROUGH_LEVEL_COUNT);
-}
-
 vec3 rgbmDecode(vec4 rgbm) {
   return 6.0 * rgbm.rgb * rgbm.a;
 }
@@ -81,10 +73,9 @@ vec3 sampleDiffuseEnv(sampler2D tex, vec3 dir) {
 
 vec3 textureLod(sampler2D tex, vec2 uv, float level) {
   vec2 map_uv = uv;
+  map_uv /= pow(2.0, level);
   map_uv.y /= 2.0;
-  map_uv.x /= pow(2.0, level);
-  map_uv.y /= pow(2.0, level);
-  map_uv.y += 1.0 - (1.0 / pow(2.0, level)); // formula seems to check out, but results are strange
+  map_uv.y += 1.0 - (1.0 / pow(2.0, level));
   return rgbmDecode(texture(tex, map_uv));
 }
 
